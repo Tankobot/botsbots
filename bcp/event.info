@@ -1,0 +1,23 @@
+logic types {
+	and <id:out> <id:out>
+	nand <id:out> <id:out>
+	or <id:out> <id:out>
+	nor <id:out> <id:out>
+	xor <id:out> <id:out>
+}
+
+control {
+	recall <id> //info
+	connect <id:out> <id:in>
+	break <id:out,in> 
+	delete <id>
+	create <type>
+}
+
+input {
+	switch <id> <state>
+	field <id> 
+	
+	<type> [extra]
+	example <id>
+}
