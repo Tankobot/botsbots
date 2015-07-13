@@ -1,12 +1,13 @@
 local sockets = {
-	["example"] = function()
-		return function(x, y) --Draw Object
+	["example"] = function(...)
+		local args = {...}
+		return function(...) --Draw Object
 			
 		end,
 		function() --Return Info
 			
 		end,
-		function() --Check Object
+		function(event) --Check Object
 			
 		end,
 		function() --Backend Node Function

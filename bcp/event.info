@@ -1,4 +1,5 @@
 logic types {
+	not <id:out> <id:out>
 	and <id:out> <id:out>
 	nand <id:out> <id:out>
 	or <id:out> <id:out>
