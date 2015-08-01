@@ -1,8 +1,8 @@
 # Bot's Bots
 Official releases of Eureka scripts. 
 
-Here is the location of all official versions of lua scripts that 
-have been created by the Bot's Bots Corporation (C). 
+Here is the location of all official versions of lua scripts that have been 
+created by the Bot's Bots Corporation (C). 
 ___
 Projects currently hosted here include: 
 
