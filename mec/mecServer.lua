@@ -3,6 +3,27 @@ Minecraft Electronic Currency, Server Side
 Note: SSL not yet implemented
 --]]
 
+--Functions to replace escape characters. 
+function string.rsub(str, repl, pattern)
+	return string.gsub(str, pattern, repl)
+end
+local function replace(str, mode)
+	if mode == "s" then
+		str = string.gsub(str, [=[\[]=], "[bracket_open]")
+		str = string.gsub(str, [=[\]]=], "[bracket_close]")
+		str = string.gsub(str, [[\/]], "[slash]")
+	elseif mode == "r" then
+		str = string.rsub(str, [=[\[]=], "[bracket_open]")
+		str = string.rsub(str, [=[\]]=], "[bracket_close]")
+		str = string.rsub(str, [[\/]], "[slash]")
+	elseif mode == "x" then
+		str = string.gsub(str, "[", "\\[")
+		str = string.gsub(str, "]", "\\]")
+		str = string.gsub(str, "/", "\\/")
+	end
+	return str
+end
+
 --Define function to convert file to table.
 local fileToTable
 function fileToTable(lineNumber, tabAmount, subsetTable, fileRead)
@@ -56,35 +77,47 @@ function fileToTable(lineNumber, tabAmount, subsetTable, fileRead)
 	end
 end
 
+local function writeTable(file, tab, indent)
+	for i, v in pairs(tab) do
+		i = replace(i, "x")
+		v = replace(v, "x")
+		if type(v) == "table" then
+			file:write(("\t"):rep(indent)..i.."/t/"..v.."\n")
+			writeTable(file, v, indent+1)
+		else
+			file:write(("\t"):rep(indent)..i.."/=/"..v.."\n")
+		end
+	end
+end
+
+local function deepcopy(orig)
+	local orig_type = type(orig)
+	local copy
+	if orig_type == 'table' then
+		copy = {}
+		for orig_key, orig_value in next, orig, nil do
+			copy[deepcopy(orig_key)] = deepcopy(orig_value)
+		end
+		setmetatable(copy, deepcopy(getmetatable(orig)))
+	else -- number, string, boolean, etc
+		copy = orig
+	end
+	return copy
+end
+
 --Load mec config file.
 local config = {}
 fileToTable(1, 0, config, io.open("config.dat", "r"))
+
+--Load account index. 
+local acctIndex = {}
+fileToTable(1, 0, acctIndex, io.open("acctIndex.dat", "r"))
 
 local function openAccount(accountNumber)
 	assert(accountNumber, "Expected account number.")
 	local fileRead, errorMsg = io.open("accounts/"..accountNumber..".dat", "r")
 	if errorMsg then
 		error(errorMsg, 2)
-	end
-	
-	function string.rsub(str, repl, pattern)
-		return string.gsub(str, pattern, repl)
-	end
-	local function replace(str, mode)
-		if mode == "s" then
-			str = string.gsub(str, [=[\[]=], "[bracket_open]")
-			str = string.gsub(str, [=[\]]=], "[bracket_close]")
-			str = string.gsub(str, [[\/]], "[slash]")
-		elseif mode == "r" then
-			str = string.rsub(str, [=[\[]=], "[bracket_open]")
-			str = string.rsub(str, [=[\]]=], "[bracket_close]")
-			str = string.rsub(str, [[\/]], "[slash]")
-		elseif mode == "x" then
-			str = string.gsub(str, "[", "\\[")
-			str = string.gsub(str, "]", "\\]")
-			str = string.gsub(str, "/", "\\/")
-		end
-		return str
 	end
 	
 	--Retrieve file information
@@ -97,18 +130,6 @@ local function openAccount(accountNumber)
 	
 	--Close account handle, writing any changes if necessary.
 	function handle.close()
-		local function writeTable(file, tab, indent)
-			for i, v in pairs(tab) do
-				i = replace(i, "x")
-				v = replace(v, "x")
-				if type(v) == "table" then
-					file:write(("\t"):rep(indent)..i.."/t/"..v.."\n")
-					writeTable(file, v, indent+1)
-				else
-					file:write(("\t"):rep(indent)..i.."/=/"..v.."\n")
-				end
-			end
-		end
 		if fileChanged then
 			local fileWrite = io.open("accounts/"..accountNumber..".dat", "w")
 			writeTable(fileWrite, fileTable, 0)
@@ -121,14 +142,16 @@ local function openAccount(accountNumber)
 	function handle.transferMecs(recipientNumber, amount, reason)
 		fileChanged = true
 		local recipient = openAccount(recipientNumber)
-		fileTable.balance = fileTable.balance-amount
+		local reciTable = recipient.get()
+		local taxTake = math.ceil(amount*config.taxdeflation)
 		
-		recipient.set.balance = recipient.set.balance+amount
+		fileTable.balance = fileTable.balance-amount
+		reciTable.balance = reciTable.balance+amount-taxTake
 		fileTable.trans = fileTable.trans or {}
 		
-		table.insert(fileTable.trans, amount.." > "..recipient.name..
+		table.insert(fileTable.trans, amount.." > "..reciTable.name..
 			":"..reason)
-		table.insert(recipient.trans, amount.." < "..fileTable.name..
+		table.insert(reciTable.trans, amount.." < "..fileTable.name..
 			":"..reason)
 		
 		recipient.close()
@@ -142,11 +165,7 @@ local function openAccount(accountNumber)
 			return fileTable[index]
 		end,
 		__call = function(temp)
-			local tabCopy = {}
-			for i, v in pairs(fileTable) do
-				tabCopy[i] = v
-			end
-			return tabCopy
+			return deepcopy(fileTable)
 		end
 	}
 	setmetatable(handle.get, handle.get.meta)
@@ -173,11 +192,15 @@ local function openAccount(accountNumber)
 		table.insert(fileTable.strikeRem, reason)
 	end
 	
-	--Find and apply the savings interest on an account from config value.
+	--Find and apply the savings interest on an account as credit.
 	function handle.calcInterest()
 		fileChanged = true
 		local interest = math.floor(fileTable.balance*config.interest)
 		--TODO
+	end
+	
+	function handle.getTransaction(username)
+		return deepcopy(fileTable.trans)
 	end
 	
 	return handle
