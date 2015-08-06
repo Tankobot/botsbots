@@ -78,6 +78,7 @@ function fileToTable(lineNumber, tabAmount, subsetTable, fileRead)
 end
 
 local function writeTable(file, tab, indent)
+	indent = indent or 0
 	for i, v in pairs(tab) do
 		i = replace(i, "x")
 		v = replace(v, "x")
@@ -107,13 +108,37 @@ end
 
 --Load mec config file.
 local config = {}
-fileToTable(1, 0, config, io.open("config.dat", "r"))
+local configFile = io.open("config.dat", "r")
+fileToTable(1, 0, config, configFile)
+configFile:close()
 
 --Load account index. 
 local acctIndex = {}
-fileToTable(1, 0, acctIndex, io.open("acctIndex.dat", "r"))
+local acctIndexFile = io.open("acctIndex.dat", "r")
+fileToTable(1, 0, acctIndex, acctIndexFile)
+acctIndexFile:close()
 
-local function openAccount(accountNumber)
+-------------------------------------------------------------------------------
+
+local function createAccount(name)
+	local fileTable = {}
+	fileTable.name = name
+	fileTable.balance = 0
+	fileTable.trans = {}
+	fileTable.keys = {}
+	fileTable.strikes = 0
+	fileTable.strikeAdd = {}
+	fileTable.strikeRem = {}
+	local file = io.open("accounts/"..(config.lastId+1)..".dat", "w")
+	acctIndex[name] = (config.lastId+1).."/s/"..name
+	local acctIndexFile = io.open("acctIndex.dat", "w")
+	writeTable(acctIndexFile, acctIndex)
+	writeTable(file, fileTable)
+	file:close()
+end
+
+local openAccount
+function openAccount(accountNumber)
 	assert(accountNumber, "Expected account number.")
 	local fileRead, errorMsg = io.open("accounts/"..accountNumber..".dat", "r")
 	if errorMsg then
@@ -132,7 +157,8 @@ local function openAccount(accountNumber)
 	function handle.close()
 		if fileChanged then
 			local fileWrite = io.open("accounts/"..accountNumber..".dat", "w")
-			writeTable(fileWrite, fileTable, 0)
+			writeTable(fileWrite, fileTable)
+			fileWrite:close()
 		else
 			handle = nil
 		end
@@ -141,20 +167,28 @@ local function openAccount(accountNumber)
 	--Transfer mecs out of the current account and into another. 
 	function handle.transferMecs(recipientNumber, amount, reason)
 		fileChanged = true
+		assert(amount%0.01==0, "Amount is more precise than one hundredth.")
 		local recipient = openAccount(recipientNumber)
 		local reciTable = recipient.get()
-		local taxTake = math.ceil(amount*config.taxdeflation)
+		local transFee = amount*config.transRate
+		local bank = openAccount("bank")
+		local bankTable = bank.get()
 		
 		fileTable.balance = fileTable.balance-amount
-		reciTable.balance = reciTable.balance+amount-taxTake
-		fileTable.trans = fileTable.trans or {}
+		reciTable.balance = reciTable.balance+amount-transFee
+		bankTable.balance = bankTable.balance+transFee
 		
-		table.insert(fileTable.trans, amount.." > "..reciTable.name..
-			":"..reason)
-		table.insert(reciTable.trans, amount.." < "..fileTable.name..
-			":"..reason)
+		local time = ":"..os.day().."/"..os.time()..":"
+		
+		table.insert(fileTable.trans, 1, amount.." > "..reciTable.name..
+			time..reason)
+		table.insert(reciTable.trans, 1, amount.." < "..fileTable.name..
+			time..reason)
+		table.insert(bankTable.trans, 1, amount.." < "..time..
+			fileTable.name.." > "..reciTable.name)
 		
 		recipient.close()
+		bank.close()
 	end
 	
 	--Special command with meta table to get specific pieces of information 
@@ -184,24 +218,43 @@ local function openAccount(accountNumber)
 	function handle.addStrike(reason)
 		fileChanged = true
 		fileTable.strikes = fileTable.strikes+1
-		table.insert(fileTable.strikeAdd, reason)
+		table.insert(fileTable.strikeAdd, 1, reason)
 	end
 	function handle.remStrike(reason)
 		fileChanged = true
 		fileTable.strikes = fileTable.strikes-1
-		table.insert(fileTable.strikeRem, reason)
+		table.insert(fileTable.strikeRem, 1, reason)
 	end
 	
 	--Find and apply the savings interest on an account as credit.
 	function handle.calcInterest()
 		fileChanged = true
-		local interest = math.floor(fileTable.balance*config.interest)
-		--TODO
+		local interest = fileTable.balance*config.interest
+		fileTable.balance = fileTable.balance + interest
+		table.insert(fileTable.trans, 1, interest..
+			" < Bank:Monthly interest payment.")
 	end
 	
-	function handle.getTransaction(username)
-		return deepcopy(fileTable.trans)
+	function handle.findTransaction(pattern)
+		local result
+		for i, v in ipairs(fileTable.trans) do
+			if string.find(v, pattern) then
+				table.insert(result, v)
+			end
+		end
+		return result
 	end
 	
 	return handle
+end
+
+--Main Loop
+local cmds = {
+	createAccount = createAccount,
+	openAccount = openAccount,
+}
+while true do
+	local args = {coroutine.yield()}
+	local cmd = table.remove(args, 1)
+	cmds[cmd](unpack(args))
 end
