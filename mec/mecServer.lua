@@ -1,6 +1,7 @@
 --[[
 Minecraft Electronic Currency, Server Side
 Note: SSL not yet implemented
+Data pipelines implemented with Stepper Encryption Algorithm. 
 --]]
 
 --Functions to replace escape characters. 
@@ -248,10 +249,60 @@ function openAccount(accountNumber)
 	return handle
 end
 
---Main Loop
+--Load network functions
+local net = dofile("net.lua")
+
+--Declare Server Commands
+local openAccts = {}
+local currAcct
 local cmds = {
-	createAccount = createAccount,
-	openAccount = openAccount,
+	--Admin functionality
+	admin = function(auth, cmd, ...)
+		--Check admin authentication. 
+		assert(config.adminKey == key, "Key does not match.")
+		--Declare possible admin commands. 
+		local F = {
+			create = createAccount,
+			delete = function(accountNumber)
+				local acct = openAccount(accountNumber)
+				local name = acct.get.name
+				acct.close()
+				local log = io.open("log.dat")
+				log:write("Closed account, id:"..accountNumber..
+					" name:"..name)
+				log:close()
+				os.remove = os.remove or fs.delete
+				os.remove("accounts/"..accountNumber..".dat")
+			end,
+			chkey = function(newKey)
+				config.adminKey = newKey
+				local file = io.open("config.dat", "w")
+				writeTable(file, config, 0)
+				file:close()
+			end,
+		}
+		--Execute given command with arguments.
+		assert(F[cmd], "Command does not exist.")
+		F[cmd](...)
+	end,
+	open = function(accountNumber, keyName, auth)
+		local acct = openAccount(accountNumber)
+		assert(acct.get.keys[keyName] == auth, "Authentication error")
+		openAccts[accountNumber] = acct
+	end,
+	select = function(accountNumber)
+		assert(openAccts[accountNumber], "Account:"..accountNumber..
+			" is not open.")
+		currAcct = accountNumber
+	end,
+	close = function(accountNumber)
+		assert(openAccts[accountNumbe], "Account: "..accountNumber..
+			" is not open.")
+		openAccts[accountNumber].close()
+		if currAcct == accountNumber then
+			currAcct = nil
+		end
+	end,
 }
 while true do
 	local args = {coroutine.yield()}
