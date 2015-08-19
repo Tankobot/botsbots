@@ -122,6 +122,7 @@ acctIndexFile:close()
 -------------------------------------------------------------------------------
 
 local function createAccount(name)
+	assert(acctIndex[name], "Account with that name already exists.")
 	local fileTable = {}
 	fileTable.name = name
 	fileTable.balance = 0
@@ -134,6 +135,7 @@ local function createAccount(name)
 	acctIndex[name] = (config.lastId+1).."/s/"..name
 	local acctIndexFile = io.open("acctIndex.dat", "w")
 	writeTable(acctIndexFile, acctIndex)
+	acctIndexFile:close()
 	writeTable(file, fileTable)
 	file:close()
 end
@@ -199,8 +201,22 @@ function openAccount(accountNumber)
 		__index = function(temp, index)
 			return fileTable[index]
 		end,
-		__call = function(temp)
-			return deepcopy(fileTable)
+		__newindex = function(temp)
+			error("Cannot index with get call.", 2)
+		end,
+		__call = function(temp, ...)
+			if not temp then
+				return deepcopy(fileTable)
+			end
+			local arg = {...}
+			local selected = temp
+			for i=1, #arg do
+				selected = selected[arg[i]]
+				if not (type(selected)=="table") then
+					break
+				end
+			end
+			return selected
 		end
 	}
 	setmetatable(handle.get, handle.get.meta)
@@ -208,10 +224,14 @@ function openAccount(accountNumber)
 	--Same as get, except here we set. 
 	handle.set = {}
 	handle.set.meta = {
+		__index = function(temp, index)
+			fileChanged = true
+			return fileTable[index]
+		end,
 		__newindex = function(temp, newindex, value)
 			fileChanged = true
 			fileTable[newindex] = value
-		end
+		end,
 	}
 	setmetatable(handle.set, handle.set.meta)
 	
@@ -280,17 +300,27 @@ local cmds = {
 				writeTable(file, config, 0)
 				file:close()
 			end,
+			open = function(accountNumber)
+				local acct = openAccount(accountNumber)
+				openAccts[accountNumber] = acct
+			end,
+			shell = function()
+				dofile("rom/programs/shell")
+			end,
 		}
 		--Execute given command with arguments.
 		if cmd == "stop" then
-			error("Stopping Server")
+			error("Stopping Server", 0)
 		end
 		assert(F[cmd], "Command does not exist.")
 		F[cmd](...)
 	end,
 	open = function(accountNumber, keyName, auth)
 		local acct = openAccount(accountNumber)
-		assert(acct.get.keys[keyName] == auth, "Authentication error")
+		if not (acct.get.keys[keyName] == auth) then
+			acct:close()
+			error("Authentication error", 1)
+		end
 		openAccts[accountNumber] = acct
 	end,
 	select = function(accountNumber)
@@ -306,12 +336,23 @@ local cmds = {
 			currAcct = nil
 		end
 	end,
+	translate = function(accountName)
+		assert(acctIndex[accountName], "Account does not exist.")
+		net.reply(acctIndex[accountName])
+	end,
 	--Setup commands that require account to be selected first. 
 	transfer = function(...)
 		assert(openAccts[currAcct], "No account selected.")
+		net.confirm(math.random(99999), "Transfer aborted.")
 		openAccts[currAcct].transferMecs(...)
 	end,
-	--TODO add rest of account commands.
+	balance = function()
+		assert(openAccts[currAcct], "No account selected.")
+		return openAccts[currAcct].balance
+	end,
+	set = function()
+		error("Please edit file manually.")
+	end,
 }
 
 local function parse(str)
@@ -321,4 +362,5 @@ end
 while true do
 	--NOTE Add server shutdown method. 
 	--NOTE Add account session timeout method. 
+	--NOTE Add timer to trigger interest. 
 end
