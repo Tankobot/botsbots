@@ -1,0 +1,16 @@
+<?layout name="Example Layout"?>
+
+<layout>
+  <pkgs>
+    <pkg name="logic" ver="0.1"/>
+    <pkg name="display" ver="0.1"/>
+    <pkg name="minerKit" ver="0.1"/>
+    <pkg name="ccinter" ver="0.1"/>
+  </pkgs>
+  <node pkg="display" obj="textbox">
+    <text>Example Control Panel</text>
+    <x>1</x>
+    <y>1</y>
+    <textcolor>16384</textcolor>
+  </node>
+</layout>
