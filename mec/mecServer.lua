@@ -92,7 +92,7 @@ local function writeTable(file, tab, indent)
 	end
 end
 
-local function deepcopy(orig)
+local function deepcopy(orig) --Lua-Users DeepCopy
 	local orig_type = type(orig)
 	local copy
 	if orig_type == 'table' then
