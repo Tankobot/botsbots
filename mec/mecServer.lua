@@ -305,6 +305,7 @@ local cmds = {
 				openAccts[accountNumber] = acct
 			end,
 			shell = function()
+				print("Server is suspended.")
 				dofile("rom/programs/shell")
 			end,
 		}
@@ -342,13 +343,17 @@ local cmds = {
 	end,
 	--Setup commands that require account to be selected first. 
 	transfer = function(...)
+		local temp, amount = ...
 		assert(openAccts[currAcct], "No account selected.")
-		net.confirm(math.random(99999), "Transfer aborted.")
+		local ran = math.random(99999)
+		net.reply("Confirm "..openAccts[currAcct].ger.name.." < "
+			..amount.."|"..math.random(99999))
+		net.waitFor(ran)
 		openAccts[currAcct].transferMecs(...)
 	end,
 	balance = function()
 		assert(openAccts[currAcct], "No account selected.")
-		return openAccts[currAcct].balance
+		net.reply(openAccts[currAcct].balance)
 	end,
 	set = function()
 		error("Please edit file manually.")
@@ -356,7 +361,12 @@ local cmds = {
 }
 
 local function parse(str)
-	--NOTE Add argument parser
+	local searching = true
+	while searching do
+		local sep = str:find(" ")
+		local quote = str:find("\"")
+	end
+	--NOTE Finish argument parser
 end
 
 while true do
