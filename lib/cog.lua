@@ -43,7 +43,7 @@ function cter.setOptions(xmin, ymin, xmax, ymax)
 	cter.lim = {xmin, ymin, xmax, ymax}
 end
 
-function cter.write()
+function cter.write(str)
 	
 end
 
